@@ -1,0 +1,9 @@
+package ma.safefarm.entity;
+import jakarta.persistence.*; import jakarta.validation.constraints.*; import java.time.LocalDateTime;
+@Entity @Table(name="farms") public class Farm {
+ @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+ @NotBlank private String name; @NotBlank private String region; @NotNull @DecimalMin("0.01") private Double area;
+ @NotNull @DecimalMin("-90") @DecimalMax("90") private Double latitude; @NotNull @DecimalMin("-180") @DecimalMax("180") private Double longitude;
+ private String soilType; private String waterAvailability; private String currentCrop; private String previousCrop; private String priority; private String equipment; private LocalDateTime createdAt=LocalDateTime.now();
+ public Long getId(){return id;} public String getName(){return name;} public void setName(String v){name=v;} public String getRegion(){return region;} public void setRegion(String v){region=v;} public Double getArea(){return area;} public void setArea(Double v){area=v;} public Double getLatitude(){return latitude;} public void setLatitude(Double v){latitude=v;} public Double getLongitude(){return longitude;} public void setLongitude(Double v){longitude=v;} public String getSoilType(){return soilType;} public void setSoilType(String v){soilType=v;} public String getWaterAvailability(){return waterAvailability;} public void setWaterAvailability(String v){waterAvailability=v;} public String getCurrentCrop(){return currentCrop;} public void setCurrentCrop(String v){currentCrop=v;} public String getPreviousCrop(){return previousCrop;} public void setPreviousCrop(String v){previousCrop=v;} public String getPriority(){return priority;} public void setPriority(String v){priority=v;} public String getEquipment(){return equipment;} public void setEquipment(String v){equipment=v;} public LocalDateTime getCreatedAt(){return createdAt;}
+}
