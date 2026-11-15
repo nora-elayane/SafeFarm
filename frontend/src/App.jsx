@@ -1,117 +1,1456 @@
-import React,{useEffect,useMemo,useState}from'react';import{NavLink,Routes,Route,useNavigate,useLocation}from'react-router-dom';import{Sprout,LayoutDashboard,Map,CloudSun,Repeat2,LandPlot,Plus,Search,Bell,ChevronDown,ArrowUpRight, Droplets, ThermometerSun,Leaf,AlertTriangle,Menu,X,RefreshCw,Trash2,Edit3,MapPin,Activity,Info,CheckCircle2}from'lucide-react';import{getFarms,saveFarm,deleteFarm,getAnalysis,getRotations}from'./api';import{ResponsiveContainer,AreaChart,Area,XAxis,YAxis,Tooltip,CartesianGrid,BarChart,Bar,Legend,ComposedChart,Line}from'recharts';import{MapContainer,TileLayer,Marker,Popup}from'react-leaflet';import L from'leaflet';
-const demo=[{id:'demo-1',name:'Tadla Farm',region:'Béni Mellal — Tadla',area:12.5,latitude:32.34,longitude:-6.35,soilType:'Clay loam',waterAvailability:'Mixed',currentCrop:'Soft wheat',previousCrop:'Barley',priority:'Save water',equipment:'Drip irrigation'}];
-const nav=[['/','Overview',LayoutDashboard],['/fields','My farms',LandPlot],['/earth-data','Climate data',CloudSun],['/rotations','Crop rotations',Repeat2],['/map','Plot map',Map]];
-function App(){const[farms,setFarms]=useState([]),[loading,setLoading]=useState(true),[offline,setOffline]=useState(false),[selected,setSelected]=useState(''),[mobile,setMobile]=useState(false);const location=useLocation();const refresh=async()=>{try{const f=await getFarms();setFarms(f);setOffline(false);if(!selected&&f.length)setSelected(String(f[0].id));}catch{setFarms(demo);setOffline(true);if(!selected)setSelected('demo-1');}finally{setLoading(false)}};useEffect(()=>{refresh()},[]);useEffect(()=>{setMobile(false)},[location.pathname]);const current=farms.find(f=>String(f.id)===String(selected))||farms[0];const value={farms,setFarms,current,selected,setSelected,refresh,offline,loading};return <div className="app-shell"><aside className={`sidebar ${mobile?'open':''}`}><div className="brand"><div className="brand-mark"><Sprout size={23}/></div><div><b>SafeFarm</b><small>SMART FARMING</small></div><button className="mobile-close" onClick={()=>setMobile(false)}><X/></button></div><div className="workspace-label">FARMER WORKSPACE</div><nav>{nav.map(([to,label,Icon])=><NavLink key={to} to={to} end={to==='/'} className={({isActive})=>`nav-link ${isActive?'active':''}`}><Icon size={18}/><span>{label}</span>{to==='/fields'&&<span className="nav-count">{farms.length}</span>}</NavLink>)}</nav><div className="sidebar-bottom"><div className="help-card"><div className="help-icon"><Info size={17}/></div><b>A decision-support tool</b><p>The analyses support your expertise; they do not replace an agricultural advisor.</p></div><div className="profile"><div className="avatar">AM</div><div><b>Farm workspace</b><small>Pilot zone · Morocco</small></div><ChevronDown size={16}/></div></div></aside>{mobile&&<div className="scrim" onClick={()=>setMobile(false)}/>}<main className="main"><header className="topbar"><button className="menu-btn" onClick={()=>setMobile(true)}><Menu/></button><div className="breadcrumb">SafeFarm <span>/</span> <b>{nav.find(n=>n[0]===location.pathname)?.[1]||'Analysis'}</b></div><div className="top-actions"><span className="region-pill"><MapPin size={14}/> Béni Mellal · Khouribga</span><button className="icon-btn" title="Refresh" onClick={refresh}><RefreshCw size={17}/></button><div className="avatar small-avatar">AM</div></div></header>{offline&&<div className="offline-banner"><Info size={16}/> Demo mode: the backend is unavailable. The data shown are examples and do not come from NASA.</div>}<div className="page-wrap"><Routes><Route path="/" element={<Dashboard {...value}/>}/><Route path="/fields" element={<Fields {...value}/>}/><Route path="/earth-data" element={<EarthData {...value}/>}/><Route path="/rotations" element={<Rotations {...value}/>}/><Route path="/map" element={<FarmMap {...value}/>}/><Route path="*" element={<Dashboard {...value}/>}/></Routes></div><footer>SafeFarm · Pilot prototype · Béni Mellal / Tadla & Khouribga <span>Results are indicative and require local validation.</span></footer></main></div>}
-function PageHead({eyebrow,title,desc,action}){return <div className="page-head"><div><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{desc}</p></div>{action}</div>}
-function SelectFarm({farms,current,setSelected}){return <select className="farm-select" value={current?.id||''} onChange={e=>setSelected(e.target.value)}>{farms.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}</select>}
-function Dashboard(p){
-  const{farms,current,setSelected}=p;const navg=useNavigate();
-  const[analysis,setAnalysis]=useState(null),[busy,setBusy]=useState(false);
-  useEffect(()=>{let active=true;if(current&&!String(current.id).startsWith('demo')){setBusy(true);getAnalysis(current.id).then(x=>active&&setAnalysis(x)).catch(()=>active&&setAnalysis(null)).finally(()=>active&&setBusy(false));}else setAnalysis(null);return()=>{active=false}},[current?.id]);
-  const has=!!analysis;const d=analysis?.drought;const irr=analysis?.irrigation;
-  return <>
-    <PageHead eyebrow="DASHBOARD" title="Welcome to SafeFarm" desc="Understand drought and water needs on your farm, then explore ways to adapt." action={farms.length>0&&<SelectFarm farms={farms} current={current} setSelected={setSelected}/>}/>
-    {!farms.length?<EmptyState onClick={()=>navg('/fields')}/>:<>
-      <div className="hero-card"><div className="hero-copy"><div className="hero-tag"><span className="pulse"/> FARM OVERVIEW</div><h2>{current?.name||'Your farm'}</h2><p>{current?.region} · {current?.area} hectares · {current?.waterAvailability||'Water regime not provided'}</p><button className="hero-button" onClick={()=>navg('/earth-data')}>View drought &amp; water analysis <ArrowUpRight size={16}/></button></div><div className="hero-art"><div className="sun"/><div className="hill hill-one"/><div className="hill hill-two"/><div className="plant">🌱</div></div></div>
-      <div className="section-title"><div><h3>Key indicators</h3><p>Computed from 15 years of NASA POWER data at the plot's location</p></div><span className="live-note"><span/> {busy?'Loading NASA POWER…':has?'NASA POWER data':'Demo preview'}</span></div>
-      <div className="metric-grid">
-        <Metric icon={AlertTriangle} label="Drought level" value={has?(d?.available?d.level:'Undetermined'):'—'} sub={has?(d?.available?`Composite index z = ${d.z}`:'Dry season: indices not significant'):'Run a NASA analysis'} tone="orange"/>
-        <Metric icon={Droplets} label="Normal annual rainfall" value={has?`${analysis.annualRainMm} mm`:'—'} sub={has?`Annual ET0 ≈ ${analysis.annualEt0Mm} mm`:'Waiting for data'} tone="blue"/>
-        <Metric icon={Activity} label="Water need, next 3 months" value={has?`${irr.totalDeficitMm} mm`:'—'} sub={has?`≈ ${Math.round(irr.farmVolumeM3).toLocaleString('en-US')} m³ over ${current?.area} ha (estimate)`:'Crop demand × ET0 − rain'} tone="teal"/>
-        <Metric icon={Leaf} label="Farm area" value={`${current?.area||0} ha`} sub={current?.soilType||'Soil type not provided'} tone="green"/>
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  NavLink,
+  Routes,
+  Route,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
+import {
+  Sprout,
+  LayoutDashboard,
+  Map,
+  CloudSun,
+  Repeat2,
+  LandPlot,
+  Plus,
+  Search,
+  Bell,
+  ChevronDown,
+  ArrowUpRight,
+  Droplets,
+  ThermometerSun,
+  Leaf,
+  AlertTriangle,
+  Menu,
+  X,
+  RefreshCw,
+  Trash2,
+  Edit3,
+  MapPin,
+  Activity,
+  Info,
+  CheckCircle2,
+} from "lucide-react";
+import {
+  getFarms,
+  saveFarm,
+  deleteFarm,
+  getAnalysis,
+  getRotations,
+} from "./api";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  BarChart,
+  Bar,
+  Legend,
+  ComposedChart,
+  Line,
+} from "recharts";
+import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import L from "leaflet";
+const demo = [
+  {
+    id: "demo-1",
+    name: "Tadla Farm",
+    region: "Béni Mellal — Tadla",
+    area: 12.5,
+    latitude: 32.34,
+    longitude: -6.35,
+    soilType: "Clay loam",
+    waterAvailability: "Mixed",
+    currentCrop: "Soft wheat",
+    previousCrop: "Barley",
+    priority: "Save water",
+    equipment: "Drip irrigation",
+  },
+];
+const nav = [
+  ["/", "Overview", LayoutDashboard],
+  ["/fields", "My farms", LandPlot],
+  ["/earth-data", "Climate data", CloudSun],
+  ["/rotations", "Crop rotations", Repeat2],
+  ["/map", "Plot map", Map],
+];
+function App() {
+  const [farms, setFarms] = useState([]),
+    [loading, setLoading] = useState(true),
+    [offline, setOffline] = useState(false),
+    [selected, setSelected] = useState(""),
+    [mobile, setMobile] = useState(false);
+  const location = useLocation();
+  const refresh = async () => {
+    try {
+      const f = await getFarms();
+      setFarms(f);
+      setOffline(false);
+      if (!selected && f.length) setSelected(String(f[0].id));
+    } catch {
+      setFarms(demo);
+      setOffline(true);
+      if (!selected) setSelected("demo-1");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    refresh();
+  }, []);
+  useEffect(() => {
+    setMobile(false);
+  }, [location.pathname]);
+  const current =
+    farms.find((f) => String(f.id) === String(selected)) || farms[0];
+  const value = {
+    farms,
+    setFarms,
+    current,
+    selected,
+    setSelected,
+    refresh,
+    offline,
+    loading,
+  };
+  return (
+    <div className="app-shell">
+      <aside className={`sidebar ${mobile ? "open" : ""}`}>
+        <div className="brand">
+          <div className="brand-mark">
+            <img src="/logo.png" width={"55px"} />
+          </div>
+          <div>
+            <b>SafeFarm</b>
+            <small>SMART FARMING</small>
+          </div>
+          <button className="mobile-close" onClick={() => setMobile(false)}>
+            <X />
+          </button>
+        </div>
+        <div className="workspace-label">FARMER WORKSPACE</div>
+        <nav>
+          {nav.map(([to, label, Icon]) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === "/"}
+              className={({ isActive }) =>
+                `nav-link ${isActive ? "active" : ""}`
+              }
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+              {to === "/fields" && (
+                <span className="nav-count">{farms.length}</span>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="help-card">
+            <div className="help-icon">
+              <Info size={17} />
+            </div>
+            <b>A decision-support tool</b>
+            <p>
+              The analyses support your expertise; they do not replace an
+              agricultural advisor.
+            </p>
+          </div>
+          <div className="profile">
+            <div className="avatar">AM</div>
+            <div>
+              <b>Farm workspace</b>
+              <small>Pilot zone · Morocco</small>
+            </div>
+            <ChevronDown size={16} />
+          </div>
+        </div>
+      </aside>
+      {mobile && <div className="scrim" onClick={() => setMobile(false)} />}
+      <main className="main">
+        <header className="topbar">
+          <button className="menu-btn" onClick={() => setMobile(true)}>
+            <Menu />
+          </button>
+          <div className="breadcrumb">
+            SafeFarm <span>/</span>{" "}
+            <b>
+              {nav.find((n) => n[0] === location.pathname)?.[1] || "Analysis"}
+            </b>
+          </div>
+          <div className="top-actions">
+            <span className="region-pill">
+              <MapPin size={14} /> Béni Mellal · Khouribga
+            </span>
+            <button className="icon-btn" title="Refresh" onClick={refresh}>
+              <RefreshCw size={17} />
+            </button>
+            <div className="avatar small-avatar">AM</div>
+          </div>
+        </header>
+        {offline && (
+          <div className="offline-banner">
+            <Info size={16} /> Demo mode: the backend is unavailable. The data
+            shown are examples and do not come from NASA.
+          </div>
+        )}
+        <div className="page-wrap">
+          <Routes>
+            <Route path="/" element={<Dashboard {...value} />} />
+            <Route path="/fields" element={<Fields {...value} />} />
+            <Route path="/earth-data" element={<EarthData {...value} />} />
+            <Route path="/rotations" element={<Rotations {...value} />} />
+            <Route path="/map" element={<FarmMap {...value} />} />
+            <Route path="*" element={<Dashboard {...value} />} />
+          </Routes>
+        </div>
+        <footer>
+          SafeFarm · Pilot prototype · Béni Mellal / Tadla & Khouribga{" "}
+          <span>Results are indicative and require local validation.</span>
+        </footer>
+      </main>
+    </div>
+  );
+}
+function PageHead({ eyebrow, title, desc, action }) {
+  return (
+    <div className="page-head">
+      <div>
+        <div className="eyebrow">{eyebrow}</div>
+        <h1>{title}</h1>
+        <p>{desc}</p>
       </div>
-      <div className="content-grid">
-        <section className="panel chart-panel"><div className="panel-head"><div><h3>Normal climate of the plot</h3><p>Average monthly rainfall and reference evapotranspiration (ET0). Where ET0 exceeds rainfall, there is a water deficit.</p></div><span className="chart-legend"><i className="dot rain"/> Rain <i className="dot temp"/> ET0</span></div>
-          {has?<ClimateChart data={analysis.monthly}/>:<div className="chart-empty">{busy?'Loading NASA data…':'Real charts appear after the NASA analysis (backend required).'}</div>}
-        </section>
-        <section className="panel insight-panel"><div className="panel-head"><div><h3>Watch list</h3><p>Points of attention for the plot</p></div><AlertTriangle size={19} color="#c58a3d"/></div>
-          <div className="insight-item"><div className="insight-icon amber"><Droplets size={18}/></div><div><b>Water availability</b><p>{current?.waterAvailability||'Provide the water regime of your plot.'}</p></div></div>
-          <div className="insight-item"><div className="insight-icon green"><Sprout size={18}/></div><div><b>Current crop</b><p>{current?.currentCrop||'Crop not provided'}</p></div></div>
-          <div className="insight-item"><div className="insight-icon blue"><MapPin size={18}/></div><div><b>Location</b><p>{current?.latitude}, {current?.longitude}</p></div></div>
-          <div className="notice"><Info size={16}/> {has?(d?.available?`Drought: ${d.level} (simplified, exploratory SPI/SPEI indices).`:'Drought indices are not significant in the dry season.'):'Signals appear once the NASA data are loaded.'}</div>
-        </section>
+      {action}
+    </div>
+  );
+}
+function SelectFarm({ farms, current, setSelected }) {
+  return (
+    <select
+      className="farm-select"
+      value={current?.id || ""}
+      onChange={(e) => setSelected(e.target.value)}
+    >
+      {farms.map((f) => (
+        <option key={f.id} value={f.id}>
+          {f.name}
+        </option>
+      ))}
+    </select>
+  );
+}
+function Dashboard(p) {
+  const { farms, current, setSelected } = p;
+  const navg = useNavigate();
+  const [analysis, setAnalysis] = useState(null),
+    [busy, setBusy] = useState(false);
+  useEffect(() => {
+    let active = true;
+    if (current && !String(current.id).startsWith("demo")) {
+      setBusy(true);
+      getAnalysis(current.id)
+        .then((x) => active && setAnalysis(x))
+        .catch(() => active && setAnalysis(null))
+        .finally(() => active && setBusy(false));
+    } else setAnalysis(null);
+    return () => {
+      active = false;
+    };
+  }, [current?.id]);
+  const has = !!analysis;
+  const d = analysis?.drought;
+  const irr = analysis?.irrigation;
+  return (
+    <>
+      <PageHead
+        eyebrow="DASHBOARD"
+        title="Welcome to SafeFarm"
+        desc="Understand drought and water needs on your farm, then explore ways to adapt."
+        action={
+          farms.length > 0 && (
+            <SelectFarm
+              farms={farms}
+              current={current}
+              setSelected={setSelected}
+            />
+          )
+        }
+      />
+      {!farms.length ? (
+        <EmptyState onClick={() => navg("/fields")} />
+      ) : (
+        <>
+          <div className="hero-card">
+            <div className="hero-copy">
+              <div className="hero-tag">
+                <span className="pulse" /> FARM OVERVIEW
+              </div>
+              <h2>{current?.name || "Your farm"}</h2>
+              <p>
+                {current?.region} · {current?.area} hectares ·{" "}
+                {current?.waterAvailability || "Water regime not provided"}
+              </p>
+              <button
+                className="hero-button"
+                onClick={() => navg("/earth-data")}
+              >
+                View drought &amp; water analysis <ArrowUpRight size={16} />
+              </button>
+            </div>
+            <div className="hero-art">
+              <div className="sun" />
+              <div className="hill hill-one" />
+              <div className="hill hill-two" />
+              <div className="plant">🌱</div>
+            </div>
+          </div>
+          <div className="section-title">
+            <div>
+              <h3>Key indicators</h3>
+              <p>
+                Computed from 15 years of NASA POWER data at the plot's location
+              </p>
+            </div>
+            <span className="live-note">
+              <span />{" "}
+              {busy
+                ? "Loading NASA POWER…"
+                : has
+                  ? "NASA POWER data"
+                  : "Demo preview"}
+            </span>
+          </div>
+          <div className="metric-grid">
+            <Metric
+              icon={AlertTriangle}
+              label="Drought level"
+              value={has ? (d?.available ? d.level : "Undetermined") : "—"}
+              sub={
+                has
+                  ? d?.available
+                    ? `Composite index z = ${d.z}`
+                    : "Dry season: indices not significant"
+                  : "Run a NASA analysis"
+              }
+              tone="orange"
+            />
+            <Metric
+              icon={Droplets}
+              label="Normal annual rainfall"
+              value={has ? `${analysis.annualRainMm} mm` : "—"}
+              sub={
+                has
+                  ? `Annual ET0 ≈ ${analysis.annualEt0Mm} mm`
+                  : "Waiting for data"
+              }
+              tone="blue"
+            />
+            <Metric
+              icon={Activity}
+              label="Water need, next 3 months"
+              value={has ? `${irr.totalDeficitMm} mm` : "—"}
+              sub={
+                has
+                  ? `≈ ${Math.round(irr.farmVolumeM3).toLocaleString("en-US")} m³ over ${current?.area} ha (estimate)`
+                  : "Crop demand × ET0 − rain"
+              }
+              tone="teal"
+            />
+            <Metric
+              icon={Leaf}
+              label="Farm area"
+              value={`${current?.area || 0} ha`}
+              sub={current?.soilType || "Soil type not provided"}
+              tone="green"
+            />
+          </div>
+          <div className="content-grid">
+            <section className="panel chart-panel">
+              <div className="panel-head">
+                <div>
+                  <h3>Normal climate of the plot</h3>
+                  <p>
+                    Average monthly rainfall and reference evapotranspiration
+                    (ET0). Where ET0 exceeds rainfall, there is a water deficit.
+                  </p>
+                </div>
+                <span className="chart-legend">
+                  <i className="dot rain" /> Rain <i className="dot temp" /> ET0
+                </span>
+              </div>
+              {has ? (
+                <ClimateChart data={analysis.monthly} />
+              ) : (
+                <div className="chart-empty">
+                  {busy
+                    ? "Loading NASA data…"
+                    : "Real charts appear after the NASA analysis (backend required)."}
+                </div>
+              )}
+            </section>
+            <section className="panel insight-panel">
+              <div className="panel-head">
+                <div>
+                  <h3>Watch list</h3>
+                  <p>Points of attention for the plot</p>
+                </div>
+                <AlertTriangle size={19} color="#c58a3d" />
+              </div>
+              <div className="insight-item">
+                <div className="insight-icon amber">
+                  <Droplets size={18} />
+                </div>
+                <div>
+                  <b>Water availability</b>
+                  <p>
+                    {current?.waterAvailability ||
+                      "Provide the water regime of your plot."}
+                  </p>
+                </div>
+              </div>
+              <div className="insight-item">
+                <div className="insight-icon green">
+                  <Sprout size={18} />
+                </div>
+                <div>
+                  <b>Current crop</b>
+                  <p>{current?.currentCrop || "Crop not provided"}</p>
+                </div>
+              </div>
+              <div className="insight-item">
+                <div className="insight-icon blue">
+                  <MapPin size={18} />
+                </div>
+                <div>
+                  <b>Location</b>
+                  <p>
+                    {current?.latitude}, {current?.longitude}
+                  </p>
+                </div>
+              </div>
+              <div className="notice">
+                <Info size={16} />{" "}
+                {has
+                  ? d?.available
+                    ? `Drought: ${d.level} (simplified, exploratory SPI/SPEI indices).`
+                    : "Drought indices are not significant in the dry season."
+                  : "Signals appear once the NASA data are loaded."}
+              </div>
+            </section>
+          </div>
+          <div className="bottom-grid">
+            <div className="panel quick-panel">
+              <div>
+                <h3>Explore rotation strategies</h3>
+                <p>
+                  Compare the current practice with two alternatives ranked by
+                  drought, water, soil and your priorities.
+                </p>
+              </div>
+              <button
+                className="secondary-button"
+                onClick={() => navg("/rotations")}
+              >
+                Compare rotations <ArrowUpRight size={16} />
+              </button>
+            </div>
+            <div className="panel quick-panel">
+              <div>
+                <h3>Your plot on the map</h3>
+                <p>See your farm's coordinates within the pilot zone.</p>
+              </div>
+              <button className="secondary-button" onClick={() => navg("/map")}>
+                Open map <ArrowUpRight size={16} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+function ClimateChart({ data }) {
+  return (
+    <ResponsiveContainer width="100%" height={270}>
+      <ComposedChart data={data}>
+        <CartesianGrid
+          strokeDasharray="3 3"
+          vertical={false}
+          stroke="#edf1ed"
+        />
+        <XAxis
+          dataKey="month"
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: "#89958d", fontSize: 12 }}
+        />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: "#89958d", fontSize: 12 }}
+          unit=" mm"
+        />
+        <Tooltip />
+        <Bar
+          dataKey="rainMm"
+          name="Normal rainfall (mm)"
+          fill="#7fbf9f"
+          radius={[4, 4, 0, 0]}
+        />
+        <Line
+          type="monotone"
+          dataKey="et0Mm"
+          name="ET0 (mm)"
+          stroke="#e4a45d"
+          strokeWidth={2.5}
+          dot={false}
+        />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+function IndexCard({ idx }) {
+  if (!idx?.available)
+    return (
+      <div className="index-card muted">
+        <small>{idx?.label}</small>
+        <b>Not significant</b>
+        <p>Climatologically dry window or insufficient history.</p>
       </div>
-      <div className="bottom-grid"><div className="panel quick-panel"><div><h3>Explore rotation strategies</h3><p>Compare the current practice with two alternatives ranked by drought, water, soil and your priorities.</p></div><button className="secondary-button" onClick={()=>navg('/rotations')}>Compare rotations <ArrowUpRight size={16}/></button></div><div className="panel quick-panel"><div><h3>Your plot on the map</h3><p>See your farm's coordinates within the pilot zone.</p></div><button className="secondary-button" onClick={()=>navg('/map')}>Open map <ArrowUpRight size={16}/></button></div></div>
-    </>}
-  </>
+    );
+  const tone = idx.z <= -1 ? "bad" : idx.z <= -0.5 ? "warn" : "ok";
+  return (
+    <div className={`index-card ${tone}`}>
+      <small>{idx.label}</small>
+      <b>{idx.level}</b>
+      <div className="z">z = {idx.z}</div>
+      <p>
+        {idx.valueMm} mm versus {idx.normalMm} mm on average (
+        {idx.anomalyPct > 0 ? "+" : ""}
+        {idx.anomalyPct}%). Of the previous {idx.baselineYears} years,{" "}
+        {idx.percentile}% were as dry or drier.
+      </p>
+    </div>
+  );
 }
-function ClimateChart({data}){
-  return <ResponsiveContainer width="100%" height={270}><ComposedChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#edf1ed"/><XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill:'#89958d',fontSize:12}}/><YAxis axisLine={false} tickLine={false} tick={{fill:'#89958d',fontSize:12}} unit=" mm"/><Tooltip/><Bar dataKey="rainMm" name="Normal rainfall (mm)" fill="#7fbf9f" radius={[4,4,0,0]}/><Line type="monotone" dataKey="et0Mm" name="ET0 (mm)" stroke="#e4a45d" strokeWidth={2.5} dot={false}/></ComposedChart></ResponsiveContainer>
+function Metric({ icon: Icon, label, value, sub, tone }) {
+  return (
+    <div className="metric-card">
+      <div className={`metric-icon ${tone}`}>
+        <Icon size={19} />
+      </div>
+      <div className="metric-label">{label}</div>
+      <div className="metric-value">{value}</div>
+      <div className="metric-sub">{sub}</div>
+    </div>
+  );
 }
-function IndexCard({idx}){
-  if(!idx?.available)return <div className="index-card muted"><small>{idx?.label}</small><b>Not significant</b><p>Climatologically dry window or insufficient history.</p></div>;
-  const tone=idx.z<=-1?'bad':idx.z<=-0.5?'warn':'ok';
-  return <div className={`index-card ${tone}`}><small>{idx.label}</small><b>{idx.level}</b><div className="z">z = {idx.z}</div><p>{idx.valueMm} mm versus {idx.normalMm} mm on average ({idx.anomalyPct>0?'+':''}{idx.anomalyPct}%). Of the previous {idx.baselineYears} years, {idx.percentile}% were as dry or drier.</p></div>
+function EmptyState({ onClick }) {
+  return (
+    <div className="empty-state">
+      <div className="empty-icon">
+        <LandPlot size={30} />
+      </div>
+      <h2>Start by adding a farm</h2>
+      <p>
+        Register your plot to link its coordinates to NASA climate data and run
+        the analyses.
+      </p>
+      <button className="primary-button" onClick={onClick}>
+        <Plus size={17} /> Add a farm
+      </button>
+    </div>
+  );
 }
-function Metric({icon:Icon,label,value,sub,tone}){return <div className="metric-card"><div className={`metric-icon ${tone}`}><Icon size={19}/></div><div className="metric-label">{label}</div><div className="metric-value">{value}</div><div className="metric-sub">{sub}</div></div>}
-function EmptyState({onClick}){return <div className="empty-state"><div className="empty-icon"><LandPlot size={30}/></div><h2>Start by adding a farm</h2><p>Register your plot to link its coordinates to NASA climate data and run the analyses.</p><button className="primary-button" onClick={onClick}><Plus size={17}/> Add a farm</button></div>}
-const blank={name:'',region:'Béni Mellal — Tadla',area:'',latitude:'32.34',longitude:'-6.35',soilType:'',waterAvailability:'Rain-fed',currentCrop:'',previousCrop:'',priority:'Save water',equipment:''};
-function Fields({farms,setFarms,refresh,offline}){const[open,setOpen]=useState(false),[edit,setEdit]=useState(null),[form,setForm]=useState(blank),[saving,setSaving]=useState(false),[error,setError]=useState('');const start=f=>{setEdit(f||null);setForm(f?Object.fromEntries(Object.keys(blank).map(k=>[k,f[k]??''])):blank);setError('');setOpen(true)};const submit=async e=>{e.preventDefault();setSaving(true);setError('');const payload={...form,area:Number(form.area),latitude:Number(form.latitude),longitude:Number(form.longitude)};try{if(offline)throw Error('The backend is offline. Start Spring Boot to save farms.');await saveFarm(payload,edit?.id);await refresh();setOpen(false)}catch(err){setError(err.response?.data?.error||err.message||'Could not save.')}finally{setSaving(false)}};const remove=async id=>{if(!confirm('Delete this farm?'))return;try{await deleteFarm(id);await refresh()}catch{alert('Deletion failed. Check the backend.')}};return <><PageHead eyebrow="FARM MANAGEMENT" title="My farms" desc="Keep your plot information in one place to personalise every analysis." action={<button className="primary-button" onClick={()=>start()}><Plus size={17}/> Add a plot</button>}/><div className="field-summary"><div><b>{farms.length}</b><span>Registered farm(s)</span></div><div><b>{farms.reduce((a,f)=>a+(Number(f.area)||0),0).toFixed(1)} ha</b><span>Total area recorded</span></div><div><b>2 regions</b><span>SafeFarm pilot zone</span></div></div>{farms.length===0?<EmptyState onClick={()=>start()}/>:<div className="farm-grid">{farms.map(f=><article className="farm-card" key={f.id}><div className="farm-card-top"><div className="farm-icon"><LandPlot size={20}/></div><div className="farm-actions"><button onClick={()=>start(f)} title="Edit"><Edit3 size={16}/></button><button onClick={()=>remove(f.id)} title="Delete"><Trash2 size={16}/></button></div></div><h3>{f.name}</h3><p className="farm-region"><MapPin size={14}/>{f.region}</p><div className="farm-data"><div><small>AREA</small><b>{f.area} ha</b></div><div><small>CURRENT CROP</small><b>{f.currentCrop||'—'}</b></div><div><small>SOIL TYPE</small><b>{f.soilType||'Not provided'}</b></div><div><small>WATER</small><b>{f.waterAvailability||'—'}</b></div></div><div className="coords">{Number(f.latitude).toFixed(3)}° N · {Number(f.longitude).toFixed(3)}° E</div></article>)}</div>}{open&&<div className="modal-backdrop" onMouseDown={e=>e.target===e.currentTarget&&setOpen(false)}><form className="modal" onSubmit={submit}><div className="modal-head"><div><div className="eyebrow">FARM PROFILE</div><h2>{edit?'Edit plot':'New farm'}</h2></div><button type="button" className="icon-btn" onClick={()=>setOpen(false)}><X/></button></div><div className="form-grid"><Field label="Farm name *"><input required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="E.g. Family farm"/></Field><Field label="Region *"><select value={form.region} onChange={e=>setForm({...form,region:e.target.value})}><option>Béni Mellal — Tadla</option><option>Khouribga</option><option>Other</option></select></Field><Field label="Area (hectares) *"><input required type="number" min="0.01" step="0.01" value={form.area} onChange={e=>setForm({...form,area:e.target.value})} placeholder="E.g. 5.5"/></Field><Field label="Soil type"><select value={form.soilType} onChange={e=>setForm({...form,soilType:e.target.value})}><option value="">Unknown</option><option>Clay</option><option>Loam</option><option>Sandy</option><option>Clay loam</option><option>Calcareous</option><option>Other</option></select></Field><Field label="Latitude *"><input required type="number" step="any" value={form.latitude} onChange={e=>setForm({...form,latitude:e.target.value})}/></Field><Field label="Longitude *"><input required type="number" step="any" value={form.longitude} onChange={e=>setForm({...form,longitude:e.target.value})}/></Field><Field label="Water availability"><select value={form.waterAvailability} onChange={e=>setForm({...form,waterAvailability:e.target.value})}><option>Rain-fed</option><option>Irrigated</option><option>Mixed</option></select></Field><Field label="Current crop"><input value={form.currentCrop} onChange={e=>setForm({...form,currentCrop:e.target.value})} placeholder="E.g. Soft wheat"/></Field><Field label="Previous crop"><input value={form.previousCrop} onChange={e=>setForm({...form,previousCrop:e.target.value})} placeholder="E.g. Barley"/></Field><Field label="Farmer's priority"><select value={form.priority} onChange={e=>setForm({...form,priority:e.target.value})}><option>Save water</option><option>Limit drought losses</option><option>Improve soil health</option><option>Reduce erosion</option><option>Diversify income</option></select></Field><Field label="Equipment / constraints"><input value={form.equipment} onChange={e=>setForm({...form,equipment:e.target.value})} placeholder="E.g. drip irrigation"/></Field></div>{error&&<div className="form-error">{error}</div>}<div className="modal-foot"><button type="button" className="secondary-button" onClick={()=>setOpen(false)}>Cancel</button><button disabled={saving} className="primary-button">{saving?'Saving…':'Save plot'}</button></div></form></div>}</>}
-function Field({label,children}){return <label className="form-field"><span>{label}</span>{children}</label>}
-function EarthData({farms,current,setSelected,offline}){
-  const[data,setData]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
-  const load=async()=>{if(!current)return;setLoading(true);setError('');try{if(offline)throw Error('Backend unavailable: NASA data cannot be retrieved in demo mode.');setData(await getAnalysis(current.id));}catch(e){setError(e.response?.data?.error||e.message||'Error while retrieving NASA POWER data.');setData(null)}finally{setLoading(false)}};
-  useEffect(()=>{setData(null);setError('')},[current?.id]);
-  const d=data?.drought,irr=data?.irrigation;
-  return <>
-    <PageHead eyebrow="EARTH OBSERVATION" title="Drought & water need" desc="15 years of NASA POWER data at your plot's location: drought indices, evapotranspiration and water deficit." action={farms.length>0&&<SelectFarm farms={farms} current={current} setSelected={setSelected}/>}/>
-    {!current?<EmptyState onClick={()=>location.href='/fields'}/>:<>
-      <div className="data-source-card"><div className="source-logo"><CloudSun size={27}/></div><div className="source-text"><b>NASA POWER · Daily Point API (15 years)</b><p>Rainfall, temperatures, humidity and radiation. Derived: ET0 (Hargreaves), SPI-3, SPI-6, SPEI-3.</p><span>Main source · Historical data</span></div><button className="primary-button" onClick={load} disabled={loading}>{loading?<><RefreshCw className="spin" size={16}/> Loading…</>:<><RefreshCw size={16}/> Query NASA</>}</button></div>
-      {error&&<div className="error-banner"><AlertTriangle size={18}/><div><b>Analysis unavailable</b><p>{error}</p></div></div>}
-      {data&&<>
-        <div className="analysis-meta"><span><CheckCircle2 size={15}/> Response received from {data.source}</span><span>Period: {data.startDate} — {data.endDate}</span><span>{data.validMonths} complete months · last month analysed: {data.analysisEndMonth}</span><span>Coordinates: {current.latitude}, {current.longitude}</span></div>
-        <div className="panel drought-panel"><div className="panel-head"><div><h3>Current drought level</h3><p>Average of the available indices, compared with the same months in previous years</p></div><AlertTriangle color="#bd8740"/></div>
-          <div className="drought-level">{d?.available?d.level:'Undetermined'}{d?.available&&<span> · mean z {d.z} · {d.indicesUsed} index(es)</span>}</div>
-          <div className="index-grid"><IndexCard idx={data.indices.spi3}/><IndexCard idx={data.indices.spi6}/><IndexCard idx={data.indices.spei3}/></div>
+const blank = {
+  name: "",
+  region: "Béni Mellal — Tadla",
+  area: "",
+  latitude: "32.34",
+  longitude: "-6.35",
+  soilType: "",
+  waterAvailability: "Rain-fed",
+  currentCrop: "",
+  previousCrop: "",
+  priority: "Save water",
+  equipment: "",
+};
+function Fields({ farms, setFarms, refresh, offline }) {
+  const [open, setOpen] = useState(false),
+    [edit, setEdit] = useState(null),
+    [form, setForm] = useState(blank),
+    [saving, setSaving] = useState(false),
+    [error, setError] = useState("");
+  const start = (f) => {
+    setEdit(f || null);
+    setForm(
+      f
+        ? Object.fromEntries(Object.keys(blank).map((k) => [k, f[k] ?? ""]))
+        : blank,
+    );
+    setError("");
+    setOpen(true);
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    const payload = {
+      ...form,
+      area: Number(form.area),
+      latitude: Number(form.latitude),
+      longitude: Number(form.longitude),
+    };
+    try {
+      if (offline)
+        throw Error("The backend is offline. Start Spring Boot to save farms.");
+      await saveFarm(payload, edit?.id);
+      await refresh();
+      setOpen(false);
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || "Could not save.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const remove = async (id) => {
+    if (!confirm("Delete this farm?")) return;
+    try {
+      await deleteFarm(id);
+      await refresh();
+    } catch {
+      alert("Deletion failed. Check the backend.");
+    }
+  };
+  return (
+    <>
+      <PageHead
+        eyebrow="FARM MANAGEMENT"
+        title="My farms"
+        desc="Keep your plot information in one place to personalise every analysis."
+        action={
+          <button className="primary-button" onClick={() => start()}>
+            <Plus size={17} /> Add a plot
+          </button>
+        }
+      />
+      <div className="field-summary">
+        <div>
+          <b>{farms.length}</b>
+          <span>Registered farm(s)</span>
         </div>
-        <div className="content-grid">
-          <section className="panel"><div className="panel-head"><div><h3>Climatic water deficit</h3><p>Normal rainfall vs ET0: when ET0 exceeds rainfall, the crop draws on soil reserves or needs irrigation</p></div><span className="chart-legend"><i className="dot rain"/> Rain <i className="dot temp"/> ET0</span></div><ClimateChart data={data.monthly}/></section>
-          <section className="panel"><div className="panel-head"><div><h3>Last 12 months vs normal</h3><p>Observed monthly rainfall (NASA grid) and the average for the same month</p></div></div>
-            <ResponsiveContainer width="100%" height={270}><ComposedChart data={data.recent}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#edf1ed"/><XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fill:'#89958d',fontSize:10}} interval={0} angle={-35} textAnchor="end" height={48}/><YAxis axisLine={false} tickLine={false} tick={{fill:'#89958d',fontSize:12}} unit=" mm"/><Tooltip/><Bar dataKey="rainMm" name="Observed rainfall (mm)" fill="#5cae8c" radius={[4,4,0,0]}/><Line type="monotone" dataKey="normalRainMm" name="Normal (mm)" stroke="#c58a3d" strokeWidth={2} dot={false}/></ComposedChart></ResponsiveContainer>
-          </section>
+        <div>
+          <b>
+            {farms.reduce((a, f) => a + (Number(f.area) || 0), 0).toFixed(1)} ha
+          </b>
+          <span>Total area recorded</span>
         </div>
-        <div className="panel irrigation-panel"><div className="panel-head"><div><h3>Water need, next 3 months</h3><p>Crop: {irr.crop} · Kc {irr.kc}{irr.kcIsDefault?' (generic value, crop not recognised)':''}</p></div><Droplets color="#4a8fb3"/></div>
-          <table className="irr-table"><thead><tr><th>Month</th><th>Crop demand (ETc)</th><th>Normal rainfall</th><th>Deficit</th></tr></thead><tbody>{irr.months.map(m=><tr key={m.month}><td>{m.month}</td><td>{m.etcMm} mm</td><td>{m.normalRainMm} mm</td><td><b>{m.deficitMm} mm</b></td></tr>)}</tbody><tfoot><tr><td colSpan="3">Estimated total</td><td><b>{irr.totalDeficitMm} mm</b> · {Math.round(irr.volumePerHectareM3).toLocaleString('en-US')} m³/ha · {Math.round(irr.farmVolumeM3).toLocaleString('en-US')} m³ for {current.area} ha</td></tr></tfoot></table>
-          <div className="notice"><Info size={16}/> {irr.note}</div>
+        <div>
+          <b>2 regions</b>
+          <span>SafeFarm pilot zone</span>
         </div>
-        <div className="panel interpretation"><div className="panel-head"><div><h3>Method and limits</h3><p>To read these figures with care</p></div></div><ul className="method-list">{data.methodology.map(x=><li key={x}>{x}</li>)}</ul></div>
-        <details className="raw-data"><summary>Monthly detail (climatology)</summary><pre>{JSON.stringify(data.monthly,null,2)}</pre></details>
-      </>}
-    </>}
-  </>
+      </div>
+      {farms.length === 0 ? (
+        <EmptyState onClick={() => start()} />
+      ) : (
+        <div className="farm-grid">
+          {farms.map((f) => (
+            <article className="farm-card" key={f.id}>
+              <div className="farm-card-top">
+                <div className="farm-icon">
+                  <LandPlot size={20} />
+                </div>
+                <div className="farm-actions">
+                  <button onClick={() => start(f)} title="Edit">
+                    <Edit3 size={16} />
+                  </button>
+                  <button onClick={() => remove(f.id)} title="Delete">
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+              <h3>{f.name}</h3>
+              <p className="farm-region">
+                <MapPin size={14} />
+                {f.region}
+              </p>
+              <div className="farm-data">
+                <div>
+                  <small>AREA</small>
+                  <b>{f.area} ha</b>
+                </div>
+                <div>
+                  <small>CURRENT CROP</small>
+                  <b>{f.currentCrop || "—"}</b>
+                </div>
+                <div>
+                  <small>SOIL TYPE</small>
+                  <b>{f.soilType || "Not provided"}</b>
+                </div>
+                <div>
+                  <small>WATER</small>
+                  <b>{f.waterAvailability || "—"}</b>
+                </div>
+              </div>
+              <div className="coords">
+                {Number(f.latitude).toFixed(3)}° N ·{" "}
+                {Number(f.longitude).toFixed(3)}° E
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {open && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}
+        >
+          <form className="modal" onSubmit={submit}>
+            <div className="modal-head">
+              <div>
+                <div className="eyebrow">FARM PROFILE</div>
+                <h2>{edit ? "Edit plot" : "New farm"}</h2>
+              </div>
+              <button
+                type="button"
+                className="icon-btn"
+                onClick={() => setOpen(false)}
+              >
+                <X />
+              </button>
+            </div>
+            <div className="form-grid">
+              <Field label="Farm name *">
+                <input
+                  required
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  placeholder="E.g. Family farm"
+                />
+              </Field>
+              <Field label="Region *">
+                <select
+                  value={form.region}
+                  onChange={(e) => setForm({ ...form, region: e.target.value })}
+                >
+                  <option>Béni Mellal — Tadla</option>
+                  <option>Khouribga</option>
+                  <option>Other</option>
+                </select>
+              </Field>
+              <Field label="Area (hectares) *">
+                <input
+                  required
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={form.area}
+                  onChange={(e) => setForm({ ...form, area: e.target.value })}
+                  placeholder="E.g. 5.5"
+                />
+              </Field>
+              <Field label="Soil type">
+                <select
+                  value={form.soilType}
+                  onChange={(e) =>
+                    setForm({ ...form, soilType: e.target.value })
+                  }
+                >
+                  <option value="">Unknown</option>
+                  <option>Clay</option>
+                  <option>Loam</option>
+                  <option>Sandy</option>
+                  <option>Clay loam</option>
+                  <option>Calcareous</option>
+                  <option>Other</option>
+                </select>
+              </Field>
+              <Field label="Latitude *">
+                <input
+                  required
+                  type="number"
+                  step="any"
+                  value={form.latitude}
+                  onChange={(e) =>
+                    setForm({ ...form, latitude: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Longitude *">
+                <input
+                  required
+                  type="number"
+                  step="any"
+                  value={form.longitude}
+                  onChange={(e) =>
+                    setForm({ ...form, longitude: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Water availability">
+                <select
+                  value={form.waterAvailability}
+                  onChange={(e) =>
+                    setForm({ ...form, waterAvailability: e.target.value })
+                  }
+                >
+                  <option>Rain-fed</option>
+                  <option>Irrigated</option>
+                  <option>Mixed</option>
+                </select>
+              </Field>
+              <Field label="Current crop">
+                <input
+                  value={form.currentCrop}
+                  onChange={(e) =>
+                    setForm({ ...form, currentCrop: e.target.value })
+                  }
+                  placeholder="E.g. Soft wheat"
+                />
+              </Field>
+              <Field label="Previous crop">
+                <input
+                  value={form.previousCrop}
+                  onChange={(e) =>
+                    setForm({ ...form, previousCrop: e.target.value })
+                  }
+                  placeholder="E.g. Barley"
+                />
+              </Field>
+              <Field label="Farmer's priority">
+                <select
+                  value={form.priority}
+                  onChange={(e) =>
+                    setForm({ ...form, priority: e.target.value })
+                  }
+                >
+                  <option>Save water</option>
+                  <option>Limit drought losses</option>
+                  <option>Improve soil health</option>
+                  <option>Reduce erosion</option>
+                  <option>Diversify income</option>
+                </select>
+              </Field>
+              <Field label="Equipment / constraints">
+                <input
+                  value={form.equipment}
+                  onChange={(e) =>
+                    setForm({ ...form, equipment: e.target.value })
+                  }
+                  placeholder="E.g. drip irrigation"
+                />
+              </Field>
+            </div>
+            {error && <div className="form-error">{error}</div>}
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </button>
+              <button disabled={saving} className="primary-button">
+                {saving ? "Saving…" : "Save plot"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </>
+  );
 }
-function SunIcon({size=18}){return <CloudSun size={size}/>}
-const FACTOR_LABELS={water:'Water',drought:'Drought',soilHealth:'Soil health',cover:'Cover',income:'Income',production:'Production',soilFit:'Soil fit'};
-function Rotations({farms,current,setSelected,offline}){
-  const[res,setRes]=useState(null),[loading,setLoading]=useState(false),[error,setError]=useState('');
-  const load=async()=>{if(!current)return;setLoading(true);setError('');try{if(offline)throw Error('Backend unavailable. Scenarios are generated by the backend from the farm profile and NASA data.');setRes(await getRotations(current.id));}catch(e){setError(e.response?.data?.error||e.message);setRes(null)}finally{setLoading(false)}};
-  useEffect(()=>{setRes(null);setError('')},[current?.id]);
-  const scenarios=res?.scenarios||[];
-  return <>
-    <PageHead eyebrow="DECISION SUPPORT" title="Compare crop rotations" desc="Scenarios are ranked by transparent rules: NASA drought level, water regime, soil, priority and previous crop." action={farms.length>0&&<SelectFarm farms={farms} current={current} setSelected={setSelected}/>}/>
-    {!current?<EmptyState onClick={()=>location.href='/fields'}/>:<>
-      <div className="rotation-intro"><div><div className="eyebrow">PROFILE USED</div><h3>{current.name}</h3><p>{current.currentCrop||'Current crop not provided'} · {current.waterAvailability||'Water not provided'} · Soil: {current.soilType||'not provided'} · Priority: {current.priority||'Not provided'}</p></div><button className="primary-button" onClick={load} disabled={loading}>{loading?'NASA analysis + generating…':'Generate comparison'} <ArrowUpRight size={16}/></button></div>
-      {error&&<div className="error-banner"><AlertTriangle size={18}/><div><b>Scenarios not loaded</b><p>{error}</p></div></div>}
-      {res&&<>
-        <div className="context-bar"><span><b>Current drought</b>{res.droughtLevel}</span><span><b>Water regime</b>{res.waterRegime}</span><span><b>Monoculture detected</b>{res.monoculture?'Yes (same family two seasons in a row)':'No'}</span></div>
-        {res.warning&&<div className="error-banner"><AlertTriangle size={18}/><div><b>NASA data unavailable</b><p>{res.warning}</p></div></div>}
-        <div className="scenario-grid">{scenarios.map((s,i)=><article className={`scenario-card ${i===0?'reference':''}`} key={s.name}>
-          <div className="scenario-top"><span className="scenario-index">0{i+1}</span><span className={`scenario-label ${i===0?'ref-label':''}`}>{i===0?'BASELINE':'ALTERNATIVE TO STUDY'}</span></div>
-          <h3>{s.name}</h3><div className="sequence">{s.sequence}</div>
-          {s.score!=null&&<div className="score-row"><div className="score-badge">{s.score}<small>/100</small></div><span>Rule-consistency score (not a predicted yield)</span></div>}
-          {s.scoreBreakdown&&Object.keys(s.scoreBreakdown).length>0&&<div className="breakdown">{Object.entries(s.scoreBreakdown).map(([k,v])=><div key={k}><span>{FACTOR_LABELS[k]||k}</span><i><u style={{width:`${Math.min(100,v*4)}%`}}/></i><em>{v}</em></div>)}</div>}
-          <div className="scenario-section"><b>Why this strategy?</b><p>{s.reason}</p></div>
-          <div className="scenario-section"><b>Water need</b><p>{s.waterNeed}</p></div>
-          <div className="scenario-section"><b>Soil cover</b><p>{s.soilCover}</p></div>
-          <div className="scenario-section risk"><b><AlertTriangle size={14}/> Risks to examine</b><p>{s.risks}</p></div>
-          <div className="scenario-benefit"><b>Potential benefit</b><p>{s.potentialBenefits}</p></div>
-          <div className="confidence"><span>Confidence level</span><b>{s.confidence}</b></div>
-          <details><summary>Missing information</summary><ul>{s.missingInformation?.map(x=><li key={x}>{x}</li>)}</ul></details>
-        </article>)}</div>
-        <div className="validation-note"><Info size={18}/><div><b>Important — local agronomic validation required</b><p>The ranking applies a generic crop catalogue (water need, tolerance, cover, legume) weighted by your context. Water needs in mm are orders of magnitude. These are options to test, not validated recommendations for your plot: have them checked by a local agricultural advisor.</p></div></div>
-      </>}
-    </>}
-  </>
+function Field({ label, children }) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
 }
-function FarmMap({farms,current,setSelected}){const icon=useMemo(()=>L.divIcon({className:'map-pin',html:'<span></span>',iconSize:[22,22],iconAnchor:[11,11]}),[]);return <><PageHead eyebrow="MAPPING" title="Farm map" desc="Locate the registered plots in the Béni Mellal / Tadla and Khouribga pilot zones." action={farms.length>0&&<SelectFarm farms={farms} current={current} setSelected={setSelected}/>}/>{!farms.length?<EmptyState onClick={()=>location.href='/fields'}/>:<><div className="map-info"><span><MapPin size={15}/> {farms.length} plot(s) registered</span><span>OpenStreetMap base map</span></div><div className="map-frame"><MapContainer center={[current?.latitude||32.34,current?.longitude||-6.35]} zoom={8} scrollWheelZoom><TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>{farms.map(f=><Marker key={f.id} position={[f.latitude,f.longitude]} icon={icon}><Popup><b>{f.name}</b><br/>{f.region}<br/>{f.area} ha · {f.currentCrop||'Crop not provided'}</Popup></Marker>)}</MapContainer></div><div className="map-list">{farms.map(f=><button key={f.id} className={`map-farm ${String(current?.id)===String(f.id)?'selected':''}`} onClick={()=>setSelected(String(f.id))}><span className="map-farm-dot"/><span><b>{f.name}</b><small>{f.region} · {f.area} ha</small></span><ArrowUpRight size={16}/></button>)}</div></>}</>}
+function EarthData({ farms, current, setSelected, offline }) {
+  const [data, setData] = useState(null),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState("");
+  const load = async () => {
+    if (!current) return;
+    setLoading(true);
+    setError("");
+    try {
+      if (offline)
+        throw Error(
+          "Backend unavailable: NASA data cannot be retrieved in demo mode.",
+        );
+      setData(await getAnalysis(current.id));
+    } catch (e) {
+      setError(
+        e.response?.data?.error ||
+          e.message ||
+          "Error while retrieving NASA POWER data.",
+      );
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    setData(null);
+    setError("");
+  }, [current?.id]);
+  const d = data?.drought,
+    irr = data?.irrigation;
+  return (
+    <>
+      <PageHead
+        eyebrow="EARTH OBSERVATION"
+        title="Drought & water need"
+        desc="15 years of NASA POWER data at your plot's location: drought indices, evapotranspiration and water deficit."
+        action={
+          farms.length > 0 && (
+            <SelectFarm
+              farms={farms}
+              current={current}
+              setSelected={setSelected}
+            />
+          )
+        }
+      />
+      {!current ? (
+        <EmptyState onClick={() => (location.href = "/fields")} />
+      ) : (
+        <>
+          <div className="data-source-card">
+            <div className="source-logo">
+              <CloudSun size={27} />
+            </div>
+            <div className="source-text">
+              <b>NASA POWER · Daily Point API (15 years)</b>
+              <p>
+                Rainfall, temperatures, humidity and radiation. Derived: ET0
+                (Hargreaves), SPI-3, SPI-6, SPEI-3.
+              </p>
+              <span>Main source · Historical data</span>
+            </div>
+            <button
+              className="primary-button"
+              onClick={load}
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <RefreshCw className="spin" size={16} /> Loading…
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={16} /> Query NASA
+                </>
+              )}
+            </button>
+          </div>
+          {error && (
+            <div className="error-banner">
+              <AlertTriangle size={18} />
+              <div>
+                <b>Analysis unavailable</b>
+                <p>{error}</p>
+              </div>
+            </div>
+          )}
+          {data && (
+            <>
+              <div className="analysis-meta">
+                <span>
+                  <CheckCircle2 size={15} /> Response received from{" "}
+                  {data.source}
+                </span>
+                <span>
+                  Period: {data.startDate} — {data.endDate}
+                </span>
+                <span>
+                  {data.validMonths} complete months · last month analysed:{" "}
+                  {data.analysisEndMonth}
+                </span>
+                <span>
+                  Coordinates: {current.latitude}, {current.longitude}
+                </span>
+              </div>
+              <div className="panel drought-panel">
+                <div className="panel-head">
+                  <div>
+                    <h3>Current drought level</h3>
+                    <p>
+                      Average of the available indices, compared with the same
+                      months in previous years
+                    </p>
+                  </div>
+                  <AlertTriangle color="#bd8740" />
+                </div>
+                <div className="drought-level">
+                  {d?.available ? d.level : "Undetermined"}
+                  {d?.available && (
+                    <span>
+                      {" "}
+                      · mean z {d.z} · {d.indicesUsed} index(es)
+                    </span>
+                  )}
+                </div>
+                <div className="index-grid">
+                  <IndexCard idx={data.indices.spi3} />
+                  <IndexCard idx={data.indices.spi6} />
+                  <IndexCard idx={data.indices.spei3} />
+                </div>
+              </div>
+              <div className="content-grid">
+                <section className="panel">
+                  <div className="panel-head">
+                    <div>
+                      <h3>Climatic water deficit</h3>
+                      <p>
+                        Normal rainfall vs ET0: when ET0 exceeds rainfall, the
+                        crop draws on soil reserves or needs irrigation
+                      </p>
+                    </div>
+                    <span className="chart-legend">
+                      <i className="dot rain" /> Rain <i className="dot temp" />{" "}
+                      ET0
+                    </span>
+                  </div>
+                  <ClimateChart data={data.monthly} />
+                </section>
+                <section className="panel">
+                  <div className="panel-head">
+                    <div>
+                      <h3>Last 12 months vs normal</h3>
+                      <p>
+                        Observed monthly rainfall (NASA grid) and the average
+                        for the same month
+                      </p>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={270}>
+                    <ComposedChart data={data.recent}>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        vertical={false}
+                        stroke="#edf1ed"
+                      />
+                      <XAxis
+                        dataKey="label"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#89958d", fontSize: 10 }}
+                        interval={0}
+                        angle={-35}
+                        textAnchor="end"
+                        height={48}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#89958d", fontSize: 12 }}
+                        unit=" mm"
+                      />
+                      <Tooltip />
+                      <Bar
+                        dataKey="rainMm"
+                        name="Observed rainfall (mm)"
+                        fill="#5cae8c"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="normalRainMm"
+                        name="Normal (mm)"
+                        stroke="#c58a3d"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </section>
+              </div>
+              <div className="panel irrigation-panel">
+                <div className="panel-head">
+                  <div>
+                    <h3>Water need, next 3 months</h3>
+                    <p>
+                      Crop: {irr.crop} · Kc {irr.kc}
+                      {irr.kcIsDefault
+                        ? " (generic value, crop not recognised)"
+                        : ""}
+                    </p>
+                  </div>
+                  <Droplets color="#4a8fb3" />
+                </div>
+                <table className="irr-table">
+                  <thead>
+                    <tr>
+                      <th>Month</th>
+                      <th>Crop demand (ETc)</th>
+                      <th>Normal rainfall</th>
+                      <th>Deficit</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {irr.months.map((m) => (
+                      <tr key={m.month}>
+                        <td>{m.month}</td>
+                        <td>{m.etcMm} mm</td>
+                        <td>{m.normalRainMm} mm</td>
+                        <td>
+                          <b>{m.deficitMm} mm</b>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan="3">Estimated total</td>
+                      <td>
+                        <b>{irr.totalDeficitMm} mm</b> ·{" "}
+                        {Math.round(irr.volumePerHectareM3).toLocaleString(
+                          "en-US",
+                        )}{" "}
+                        m³/ha ·{" "}
+                        {Math.round(irr.farmVolumeM3).toLocaleString("en-US")}{" "}
+                        m³ for {current.area} ha
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <div className="notice">
+                  <Info size={16} /> {irr.note}
+                </div>
+              </div>
+              <div className="panel interpretation">
+                <div className="panel-head">
+                  <div>
+                    <h3>Method and limits</h3>
+                    <p>To read these figures with care</p>
+                  </div>
+                </div>
+                <ul className="method-list">
+                  {data.methodology.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                </ul>
+              </div>
+              <details className="raw-data">
+                <summary>Monthly detail (climatology)</summary>
+                <pre>{JSON.stringify(data.monthly, null, 2)}</pre>
+              </details>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+function SunIcon({ size = 18 }) {
+  return <CloudSun size={size} />;
+}
+const FACTOR_LABELS = {
+  water: "Water",
+  drought: "Drought",
+  soilHealth: "Soil health",
+  cover: "Cover",
+  income: "Income",
+  production: "Production",
+  soilFit: "Soil fit",
+};
+function Rotations({ farms, current, setSelected, offline }) {
+  const [res, setRes] = useState(null),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState("");
+  const load = async () => {
+    if (!current) return;
+    setLoading(true);
+    setError("");
+    try {
+      if (offline)
+        throw Error(
+          "Backend unavailable. Scenarios are generated by the backend from the farm profile and NASA data.",
+        );
+      setRes(await getRotations(current.id));
+    } catch (e) {
+      setError(e.response?.data?.error || e.message);
+      setRes(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    setRes(null);
+    setError("");
+  }, [current?.id]);
+  const scenarios = res?.scenarios || [];
+  return (
+    <>
+      <PageHead
+        eyebrow="DECISION SUPPORT"
+        title="Compare crop rotations"
+        desc="Scenarios are ranked by transparent rules: NASA drought level, water regime, soil, priority and previous crop."
+        action={
+          farms.length > 0 && (
+            <SelectFarm
+              farms={farms}
+              current={current}
+              setSelected={setSelected}
+            />
+          )
+        }
+      />
+      {!current ? (
+        <EmptyState onClick={() => (location.href = "/fields")} />
+      ) : (
+        <>
+          <div className="rotation-intro">
+            <div>
+              <div className="eyebrow">PROFILE USED</div>
+              <h3>{current.name}</h3>
+              <p>
+                {current.currentCrop || "Current crop not provided"} ·{" "}
+                {current.waterAvailability || "Water not provided"} · Soil:{" "}
+                {current.soilType || "not provided"} · Priority:{" "}
+                {current.priority || "Not provided"}
+              </p>
+            </div>
+            <button
+              className="primary-button"
+              onClick={load}
+              disabled={loading}
+            >
+              {loading ? "NASA analysis + generating…" : "Generate comparison"}{" "}
+              <ArrowUpRight size={16} />
+            </button>
+          </div>
+          {error && (
+            <div className="error-banner">
+              <AlertTriangle size={18} />
+              <div>
+                <b>Scenarios not loaded</b>
+                <p>{error}</p>
+              </div>
+            </div>
+          )}
+          {res && (
+            <>
+              <div className="context-bar">
+                <span>
+                  <b>Current drought</b>
+                  {res.droughtLevel}
+                </span>
+                <span>
+                  <b>Water regime</b>
+                  {res.waterRegime}
+                </span>
+                <span>
+                  <b>Monoculture detected</b>
+                  {res.monoculture
+                    ? "Yes (same family two seasons in a row)"
+                    : "No"}
+                </span>
+              </div>
+              {res.warning && (
+                <div className="error-banner">
+                  <AlertTriangle size={18} />
+                  <div>
+                    <b>NASA data unavailable</b>
+                    <p>{res.warning}</p>
+                  </div>
+                </div>
+              )}
+              <div className="scenario-grid">
+                {scenarios.map((s, i) => (
+                  <article
+                    className={`scenario-card ${i === 0 ? "reference" : ""}`}
+                    key={s.name}
+                  >
+                    <div className="scenario-top">
+                      <span className="scenario-index">0{i + 1}</span>
+                      <span
+                        className={`scenario-label ${i === 0 ? "ref-label" : ""}`}
+                      >
+                        {i === 0 ? "BASELINE" : "ALTERNATIVE TO STUDY"}
+                      </span>
+                    </div>
+                    <h3>{s.name}</h3>
+                    <div className="sequence">{s.sequence}</div>
+                    {s.score != null && (
+                      <div className="score-row">
+                        <div className="score-badge">
+                          {s.score}
+                          <small>/100</small>
+                        </div>
+                        <span>
+                          Rule-consistency score (not a predicted yield)
+                        </span>
+                      </div>
+                    )}
+                    {s.scoreBreakdown &&
+                      Object.keys(s.scoreBreakdown).length > 0 && (
+                        <div className="breakdown">
+                          {Object.entries(s.scoreBreakdown).map(([k, v]) => (
+                            <div key={k}>
+                              <span>{FACTOR_LABELS[k] || k}</span>
+                              <i>
+                                <u
+                                  style={{ width: `${Math.min(100, v * 4)}%` }}
+                                />
+                              </i>
+                              <em>{v}</em>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    <div className="scenario-section">
+                      <b>Why this strategy?</b>
+                      <p>{s.reason}</p>
+                    </div>
+                    <div className="scenario-section">
+                      <b>Water need</b>
+                      <p>{s.waterNeed}</p>
+                    </div>
+                    <div className="scenario-section">
+                      <b>Soil cover</b>
+                      <p>{s.soilCover}</p>
+                    </div>
+                    <div className="scenario-section risk">
+                      <b>
+                        <AlertTriangle size={14} /> Risks to examine
+                      </b>
+                      <p>{s.risks}</p>
+                    </div>
+                    <div className="scenario-benefit">
+                      <b>Potential benefit</b>
+                      <p>{s.potentialBenefits}</p>
+                    </div>
+                    <div className="confidence">
+                      <span>Confidence level</span>
+                      <b>{s.confidence}</b>
+                    </div>
+                    <details>
+                      <summary>Missing information</summary>
+                      <ul>
+                        {s.missingInformation?.map((x) => (
+                          <li key={x}>{x}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  </article>
+                ))}
+              </div>
+              <div className="validation-note">
+                <Info size={18} />
+                <div>
+                  <b>Important — local agronomic validation required</b>
+                  <p>
+                    The ranking applies a generic crop catalogue (water need,
+                    tolerance, cover, legume) weighted by your context. Water
+                    needs in mm are orders of magnitude. These are options to
+                    test, not validated recommendations for your plot: have them
+                    checked by a local agricultural advisor.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+function FarmMap({ farms, current, setSelected }) {
+  const icon = useMemo(
+    () =>
+      L.divIcon({
+        className: "map-pin",
+        html: "<span></span>",
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      }),
+    [],
+  );
+  return (
+    <>
+      <PageHead
+        eyebrow="MAPPING"
+        title="Farm map"
+        desc="Locate the registered plots in the Béni Mellal / Tadla and Khouribga pilot zones."
+        action={
+          farms.length > 0 && (
+            <SelectFarm
+              farms={farms}
+              current={current}
+              setSelected={setSelected}
+            />
+          )
+        }
+      />
+      {!farms.length ? (
+        <EmptyState onClick={() => (location.href = "/fields")} />
+      ) : (
+        <>
+          <div className="map-info">
+            <span>
+              <MapPin size={15} /> {farms.length} plot(s) registered
+            </span>
+            <span>OpenStreetMap base map</span>
+          </div>
+          <div className="map-frame">
+            <MapContainer
+              center={[current?.latitude || 32.34, current?.longitude || -6.35]}
+              zoom={8}
+              scrollWheelZoom
+            >
+              <TileLayer
+                attribution="&copy; OpenStreetMap contributors"
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {farms.map((f) => (
+                <Marker
+                  key={f.id}
+                  position={[f.latitude, f.longitude]}
+                  icon={icon}
+                >
+                  <Popup>
+                    <b>{f.name}</b>
+                    <br />
+                    {f.region}
+                    <br />
+                    {f.area} ha · {f.currentCrop || "Crop not provided"}
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
+          </div>
+          <div className="map-list">
+            {farms.map((f) => (
+              <button
+                key={f.id}
+                className={`map-farm ${String(current?.id) === String(f.id) ? "selected" : ""}`}
+                onClick={() => setSelected(String(f.id))}
+              >
+                <span className="map-farm-dot" />
+                <span>
+                  <b>{f.name}</b>
+                  <small>
+                    {f.region} · {f.area} ha
+                  </small>
+                </span>
+                <ArrowUpRight size={16} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
 export default App;
